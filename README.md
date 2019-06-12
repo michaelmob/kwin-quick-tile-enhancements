@@ -15,8 +15,9 @@ Enhancements for the KWin Quick Tile feature.
 Navigate to the [Releases](https://github.com/thetarkus/kwin-quick-tile-enhancements/releases/)
 page and download the latest `kwin-quick-tile-enhancements-*.kwinscript` file.
 
-Next open the `KWin Scripts` settings window, and click `Install from File...`.
-Select the `*.kwinscript`, click the checkbox on the left and then hit Apply.
+Next open the `KWin Scripts` settings window (search in krunner or start menu),
+and click `Install from File...`.  Select the `*.kwinscript`, click the
+checkbox on the left and then hit Apply.
 
 ### Warnings
 1. Not tested for multi-monitors. (Sorry!)
