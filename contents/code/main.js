@@ -27,8 +27,8 @@ workspace.quickTileTolerance = 5;
 /**
  * Determine if number is near another number.
  *
- * @param {array[x,y]} a
- * @param {array[x,y]} b
+ * @param {number} a
+ * @param {number} b
  * @param {number} tolerance
  * @return {boolean}
  */
@@ -156,23 +156,19 @@ function onClientMove(client) {
 
 
 /**
- * Called repeatedly as a client is moving.
+ * Called repeatedly as a client is resizing/moving.
  *
  * @param {object} client
  * @return {boolean}
  */
 function onClientMoving(client) {
-  // Ignore clients not in a client group
-  if (typeof workspace.clientGroup === 'undefined')
-    return false;
-
-  // We only care about the window we're resizing
-  if (workspace.activeFrameId !== client.frameId)
-    return false;
+  // Should we care about this client?
+  if (!isActiveFrame(client))
+    return;
 
   // Auto-resize all tiled clients
-  resizeTiledClients(client, workspace.clientGroup);
-  return true;
+  if (wasResized(client))
+    resizeTiledClients(client, workspace.clientGroup);
 }
 
 
@@ -185,36 +181,40 @@ function onClientMoving(client) {
 function onClientMoved(client) {
   // Auto-tile client when quick-tiled
   var screenEdge = getScreenEdge(client);
-  if (wasQuickTiled(client, screenEdge)) {
-    var centerPoint = getCenterPoint(client);
-    resizeTiledClient(client, screenEdge, centerPoint, false);
-  }
+  if (wasQuickTiled(client, screenEdge))
+    resizeTiledClient(client, screenEdge, getCenterPoint(client), false);
 
   // Are we allowed to move this window?
-  var didMove = onClientMoving(client);
-  if (!didMove)
+  if (!isActiveFrame(client))
     return;
 
-  // Resize check
-  var widthChanged = workspace.clientGeometry.width !== client.geometry.width
-  var heightChanged = workspace.clientGeometry.height !== client.geometry.height
-  var didResize = widthChanged || heightChanged;
-
   // Prevent accidental client resizes
-  if (didResize) {
-    screenEdge = workspace.clientScreenEdge
+  if (wasResized(client)) {
+    var screenEdge = workspace.clientScreenEdge
+    var isLeftTiled = screenEdge == ScreenEdge.LEFT;
+    var isRightTiled = screenEdge == ScreenEdge.RIGHT;
+    var heightChanged = workspace.clientGeometry.height != client.geometry.height
+
     var currPoint = getOuterCornerPoint(client, screenEdge)
     var prevPoint = workspace.clientOuterCornerPoint
-    var isSideTiled = screenEdge == ScreenEdge.RIGHT || screenEdge == ScreenEdge.LEFT
 
-    // Prevent side tiled from changing height
-    if (isSideTiled && heightChanged)
-      resizeClient(client,
-        client.x, workspace._clientArea.y,
-        client.width, workspace._clientArea.height);
+    // Only needed for side tiled clients
+    if (isLeftTiled || isRightTiled) {
+      if (!nearToPoint(currPoint, prevPoint, workspace.clientSnapTolerance))
+        //resizeTiledClient(client, screenEdge);
+        //tileClient()
+        client.geometry = workspace.clientGeometry;
 
-    else if (!nearToPoint(currPoint, prevPoint, workspace.clientSnapTolerance))
-      client.geometry = workspace.clientGeometry;
+      // Ensure side tiled client is max height
+      else if (heightChanged)
+        resizeClient(client,
+          client.x, workspace._clientArea.y,
+          client.width, workspace._clientArea.height)
+    }
+
+    // Resize grouped clients one final time to make sure their corners touch
+    resizeTiledClients(client, workspace.clientGroup);
+    snapToScreenEdge(client, screenEdge);
   }
 
   // Prevent accidental client moves
@@ -307,6 +307,40 @@ function wasQuickTiled(client) {
 
 
 /**
+ * Determine if window was resized.
+ *
+ * @param {object} client
+ * @return {boolean}
+ */
+function wasResized(client) {
+  // Resize check
+  return (
+    workspace.clientGeometry.width !== client.geometry.width ||
+    workspace.clientGeometry.height !== client.geometry.height
+  );
+}
+
+
+/**
+ * Determine if window belongs to a client group and if its the active frame.
+ *
+ * @param {object} client
+ * @return {boolean}
+ */
+function isActiveFrame(client) {
+  // Ignore clients not in a client group
+  if (typeof workspace.clientGroup === 'undefined')
+    return false;
+
+  // We only care about the window we're resizing
+  if (workspace.activeFrameId !== client.frameId)
+    return false;
+
+  return true;
+}
+
+
+/**
  * Get center point of largest client group.
  * Fallback to screen center when no clients are found.
  *
@@ -342,6 +376,27 @@ function getCenterPoint(client) {
     result[1] = halfHeight
 
   return result;
+}
+
+
+/**
+ * Resize client by setting its geometry property.
+ * Ignore negative height and width.
+ *
+ * @param {object} client
+ * @param {number} x
+ * @param {number} y
+ * @param {number} width
+ * @param {number} height
+ * @return {void}
+ */
+function resizeClient(client, x, y, width, height) {
+  // Disallow negative height and width
+  if (height <= 0 || width <= 0)
+    return;
+
+  // Set client client.geometry
+  client.geometry = { x: x, y: y, width: width, height: height };
 }
 
 
@@ -459,23 +514,69 @@ function getOuterCornerPoint(client, screenEdge) {
 
 
 /**
- * Resize client by setting its geometry property.
- * Ignore negative height and width.
+ * Ensure a clients border touches the screen edge.
  *
  * @param {object} client
- * @param {number} x
- * @param {number} y
- * @param {number} width
- * @param {number} height
+ * @param {array[object]} clients
  * @return {void}
  */
-function resizeClient(client, x, y, width, height) {
-  // Disallow negative height and width
-  if (height <= 0 || width <= 0)
+function snapToScreenEdge(client, screenEdge) {
+  // Side tiled clients need not apply
+  if (screenEdge == ScreenEdge.LEFT || screenEdge == ScreenEdge.RIGHT)
     return;
 
-  // Set client client.geometry
-  client.geometry = { x: x, y: y, width: width, height: height };
+  var clientArea = workspace._clientArea;
+  var x = client.x;
+  var y = client.y;
+  var width = client.width;
+  var height = client.height;
+
+  // Calculate size
+  switch (screenEdge) {
+    case ScreenEdge.TOP_LEFT:
+      x = clientArea.x;
+      y = clientArea.y;
+      width -= x - client.x;
+      height -= y - client.y;
+      break;
+
+    case ScreenEdge.TOP_RIGHT:
+      y = clientArea.y;
+      width += clientArea.width - (client.x + client.width);
+      height -= y - client.y;
+      break;
+
+    case ScreenEdge.BOTTOM_LEFT:
+      x = clientArea.x;
+      width += x + client.x;
+      height += clientArea.height - (client.y + client.height);
+      break;
+
+    case ScreenEdge.BOTTOM_RIGHT:
+      width += clientArea.width - (client.x + client.width);
+      height += clientArea.height - (client.y + client.height);
+      break;
+  }
+
+  // Resize the client
+  return resizeClient(client, x, y, width, height);
+}
+
+
+/**
+ * Tile a group of clients.
+ *
+ * @param {object} client
+ * @param {array[object]} clients
+ * @return {void}
+ */
+function tileClients(clients) {
+  for (var i = clients.length - 1; i >= 0; i--) {
+    if (typeof clients[i] === 'undefined')
+      continue;
+
+    tileClient(clients[i][0], clients[i][1])
+  }
 }
 
 
@@ -520,6 +621,7 @@ function resizeTiledClient(client, screenEdge, centerPoint, masterSideTile) {
         y = clientArea.y;
         height = centerPoint[1];
       }
+
       break;
 
     // Resize top right tiled client
@@ -544,6 +646,7 @@ function resizeTiledClient(client, screenEdge, centerPoint, masterSideTile) {
 
     // Resize bottom left tiled client
     case ScreenEdge.BOTTOM_LEFT:
+      x = clientArea.x;
       width = centerPoint[0];
       if (!masterSideTile) {
         y = centerPoint[1];
@@ -565,14 +668,13 @@ function resizeTiledClient(client, screenEdge, centerPoint, masterSideTile) {
  */
 function resizeTiledClients(masterClient, clients) {
   // Get master client's relevant corner point as the center of all windows
-  var screenEdge = getScreenEdge(masterClient)
+  var screenEdge = workspace.clientScreenEdge
   var centerPoint = getInnerCornerPoint(masterClient, screenEdge)
   if (typeof centerPoint === 'undefined')
     return
 
   // Let corner tiles know if a side tile is the master
-  screenEdge = workspace.clientScreenEdge;
-  var sideTile = screenEdge == ScreenEdge.LEFT || screenEdge == ScreenEdge.RIGHT;
+  var sideTile = screenEdge == ScreenEdge.LEFT || screenEdge == ScreenEdge.RIGHT
 
   // Loop through all clients and resize them
   for (var i = clients.length - 1; i >= 0; i--) {
