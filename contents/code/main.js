@@ -22,6 +22,7 @@ workspace.screenEdgeTolerance = 15;
 workspace.moveAccidentTolerance = 100;
 workspace.clientSnapTolerance = 0;
 workspace.quickTileTolerance = 5;
+workspace.savedClientGeometry = {};
 workspace.restoreGeometry = false;
 
 
@@ -139,8 +140,12 @@ function onClientMove(client) {
 
   // Get screen edge of client
   var screenEdge = getScreenEdge(client);
-  if (screenEdge < 0)
+  if (screenEdge < 0) {
+    // Save client's pre-tiled geometry
+    workspace.savedClientGeometry[client.frameId] =
+      JSON.parse(JSON.stringify(client.geometry))
     return;
+  }
 
   // Get grouped clients
   var clientGroup = getClientGroup(client);
@@ -193,20 +198,35 @@ function onClientMoved(client) {
   if (!isActiveFrame(client))
     return;
 
-  // Prevent accidental client resizes
+  // Client resizing
   if (!workspace.restoreGeometry && wasResized(client)) {
     // Resize grouped clients one final time to make sure their corners touch
     resizeTiledClients(client, workspace.clientGroup);
     snapToScreenEdge(client, workspace.clientScreenEdge);
   }
 
-  // Prevent accidental client moves
+  // Client moving
   else {
+    // Prevent accidental client moves
     var currPoint = [client.geometry.x, client.geometry.y];
     var prevPoint = [workspace.clientGeometry.x, workspace.clientGeometry.y];
-
     if (nearToPoint(currPoint, prevPoint, workspace.moveAccidentTolerance))
       client.geometry = workspace.clientGeometry;
+
+    // Restore saved geometry (before client was tiled)
+    else if (workspace.restoreGeometry) {
+      var savedGeometry = workspace.savedClientGeometry[client.frameId]
+      if (typeof savedGeometry !== 'undefined') {
+        // Center frame inside old frame
+        // The kwin scripting interface doesn't give access to mouse position
+        savedGeometry.x = client.x > 0 ? client.x : 0
+        savedGeometry.y = client.y > 0 ? client.y : 0
+
+        // Restore and delete entry
+        client.geometry = savedGeometry
+        delete workspace.savedClientGeometry[client.frameId]
+      }
+    }
   }
 
   // Reset workspace properties
