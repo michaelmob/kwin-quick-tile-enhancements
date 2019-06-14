@@ -357,6 +357,10 @@ function getCenterPoint(client) {
   // Find client group with most client corners in close proximity
   var largestNumber = 0;
   for (var i = clients.length - 1; i >= 0; i--) {
+    // Do not try to connect to self
+    if (client.frameId === clients[i].frameId)
+      continue;
+
     var tempClientGroup = getClientGroup(clients[i]);
     var tempClientLength = tempClientGroup.length;
     if (tempClientLength < 1 || tempClientLength < largestNumber)
