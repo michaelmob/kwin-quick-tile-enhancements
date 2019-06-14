@@ -22,6 +22,7 @@ workspace.screenEdgeTolerance = 15;
 workspace.moveAccidentTolerance = 100;
 workspace.clientSnapTolerance = 0;
 workspace.quickTileTolerance = 5;
+workspace.restoreGeometry = false;
 
 
 /**
@@ -151,7 +152,6 @@ function onClientMove(client) {
   workspace.clientScreenEdge = screenEdge;
   workspace.clientGroup = clientGroup;
   workspace.clientGeometry = JSON.parse(JSON.stringify(client.geometry));
-  workspace.clientOuterCornerPoint = getOuterCornerPoint(client, screenEdge);
 }
 
 
@@ -163,12 +163,17 @@ function onClientMove(client) {
  */
 function onClientMoving(client) {
   // Should we care about this client?
-  if (!isActiveFrame(client))
+  if (workspace.restoreGeometry || !isActiveFrame(client))
     return;
 
   // Auto-resize all tiled clients
   if (wasResized(client))
     resizeTiledClients(client, workspace.clientGroup);
+
+  // Ignore further resizing; this allows us to drag a window out of the
+  // snapped mode
+  else
+    workspace.restoreGeometry = true;
 }
 
 
@@ -189,32 +194,10 @@ function onClientMoved(client) {
     return;
 
   // Prevent accidental client resizes
-  if (wasResized(client)) {
-    var screenEdge = workspace.clientScreenEdge
-    var isLeftTiled = screenEdge == ScreenEdge.LEFT;
-    var isRightTiled = screenEdge == ScreenEdge.RIGHT;
-    var heightChanged = workspace.clientGeometry.height != client.geometry.height
-
-    var currPoint = getOuterCornerPoint(client, screenEdge)
-    var prevPoint = workspace.clientOuterCornerPoint
-
-    // Only needed for side tiled clients
-    if (isLeftTiled || isRightTiled) {
-      if (!nearToPoint(currPoint, prevPoint, workspace.clientSnapTolerance))
-        //resizeTiledClient(client, screenEdge);
-        //tileClient()
-        client.geometry = workspace.clientGeometry;
-
-      // Ensure side tiled client is max height
-      else if (heightChanged)
-        resizeClient(client,
-          client.x, workspace._clientArea.y,
-          client.width, workspace._clientArea.height)
-    }
-
+  if (!workspace.restoreGeometry && wasResized(client)) {
     // Resize grouped clients one final time to make sure their corners touch
     resizeTiledClients(client, workspace.clientGroup);
-    snapToScreenEdge(client, screenEdge);
+    snapToScreenEdge(client, workspace.clientScreenEdge);
   }
 
   // Prevent accidental client moves
@@ -229,6 +212,7 @@ function onClientMoved(client) {
   // Reset workspace properties
   workspace.activeFrameId = -1;
   workspace.clientGroup = undefined;
+  workspace.restoreGeometry = false;
 }
 
 
@@ -313,10 +297,9 @@ function wasQuickTiled(client) {
  * @return {boolean}
  */
 function wasResized(client) {
-  // Resize check
   return (
-    workspace.clientGeometry.width !== client.geometry.width ||
-    workspace.clientGeometry.height !== client.geometry.height
+    workspace.clientGeometry.width != client.geometry.width ||
+    workspace.clientGeometry.height != client.geometry.height
   );
 }
 
@@ -522,9 +505,6 @@ function getOuterCornerPoint(client, screenEdge) {
  */
 function snapToScreenEdge(client, screenEdge) {
   // Side tiled clients need not apply
-  if (screenEdge == ScreenEdge.LEFT || screenEdge == ScreenEdge.RIGHT)
-    return;
-
   var clientArea = workspace._clientArea;
   var x = client.x;
   var y = client.y;
@@ -533,6 +513,19 @@ function snapToScreenEdge(client, screenEdge) {
 
   // Calculate size
   switch (screenEdge) {
+    case ScreenEdge.LEFT:
+      y = clientArea.y;
+      x = clientArea.x;
+      width -= x - client.x;
+      height = clientArea.height;
+      break;
+
+    case ScreenEdge.RIGHT:
+      y = clientArea.y;
+      width += clientArea.width - (client.x + client.width);
+      height = clientArea.height;
+      break;
+
     case ScreenEdge.TOP_LEFT:
       x = clientArea.x;
       y = clientArea.y;
