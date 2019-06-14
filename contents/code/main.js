@@ -205,12 +205,13 @@ function onClientMoved(client) {
     screenEdge = workspace.clientScreenEdge
     var currPoint = getOuterCornerPoint(client, screenEdge)
     var prevPoint = workspace.clientOuterCornerPoint
+    var isSideTiled = screenEdge == ScreenEdge.RIGHT || screenEdge == ScreenEdge.LEFT
 
     // Prevent side tiled from changing height
-    if (heightChanged && (screenEdge == ScreenEdge.RIGHT || screenEdge == ScreenEdge.LEFT))
+    if (isSideTiled && heightChanged)
       resizeClient(client,
-        workspace.clientGeometry.x, workspace._clientArea.y,
-        workspace.clientGeometry.width, workspace._clientArea.height);
+        client.x, workspace._clientArea.y,
+        client.width, workspace._clientArea.height);
 
     else if (!nearToPoint(currPoint, prevPoint, workspace.clientSnapTolerance))
       client.geometry = workspace.clientGeometry;
