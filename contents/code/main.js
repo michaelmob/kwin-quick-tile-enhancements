@@ -1,5 +1,5 @@
 /*
- * KWin Quick Tile Enhancements
+ * KWin Quick Tile Enhancements 0.2.0
  * @thetarkus, Mike Mob
  * https://github.com/thetarkus/kwin-quick-tile-enhancements
  */
@@ -372,7 +372,7 @@ function getCenterPoint(client) {
 
   // Default value at center screen if no grouped clients
   var halfHeight = workspace._clientArea.height / 2
-  if (clientGroup.length < 0)
+  if (typeof clientGroup[0] === 'undefined')
     return [workspace._clientArea.width / 2, halfHeight];
 
   // Get inner corner point as the center point
